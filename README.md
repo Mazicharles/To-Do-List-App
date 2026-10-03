@@ -23,5 +23,5 @@ FastAPI serves the built React app and API from the same address. Interactive AP
 
 For frontend development, run `.venv\Scripts\python.exe -m uvicorn backend.main:app --reload` from the project root and `npm.cmd run dev` from `frontend` in a second terminal. Vite forwards API requests to FastAPI.
 
-This app runs locally without accounts or cloud sync. To back up tasks, stop the server and copy `backend/todos.db`. To reset tasks, stop the server and remove that database. Reordering is available in the All filter; drag a row or use its arrow buttons. Editing supports Escape to cancel.
+Without DATABASE_URL this app runs locally with SQLite. Set DATABASE_URL to use hosted PostgreSQL for the shared online demo. See [DEPLOYMENT.md](DEPLOYMENT.md) for Vercel setup. To back up local tasks, stop the server and copy `backend/todos.db`. Reordering is available in the All filter; drag a row or use its arrow buttons. Editing supports Escape to cancel.
 

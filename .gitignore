@@ -6,3 +6,7 @@ dist/
 *.db-*
 *.log
 .npm-cache/
+.env
+.env.*
+!.env.example
+.vercel/

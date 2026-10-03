@@ -19,6 +19,8 @@ class TaskApiTest(unittest.TestCase):
                 sock.bind(('127.0.0.1', 0))
                 port = sock.getsockname()[1]
             env = {**os.environ, 'TODO_DB': str(Path(folder) / 'test.db')}
+            env.pop('DATABASE_URL', None)
+            env.pop('VERCEL', None)
             command = [sys.executable, '-m', 'uvicorn', 'backend.main:app', '--port', str(port)]
             process = None
 

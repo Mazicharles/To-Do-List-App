@@ -8,21 +8,47 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 DB = Path(os.environ.get('TODO_DB', Path(__file__).with_name('todos.db')))
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+class PostgresDatabase:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def execute(self, sql, parameters=()):
+        return self.connection.execute(sql.replace('?', '%s'), parameters)
+
+    def executemany(self, sql, parameters):
+        with self.connection.cursor() as cursor:
+            cursor.executemany(sql.replace('?', '%s'), parameters)
 
 @contextmanager
 def database():
+    if DATABASE_URL:
+        import psycopg
+        from psycopg.rows import dict_row
+        with psycopg.connect(DATABASE_URL, row_factory=dict_row, connect_timeout=10) as connection:
+            # Serialize this small shared demo's transactions across server instances.
+            connection.execute('SELECT pg_advisory_xact_lock(78208765)')
+            connection.execute('CREATE TABLE IF NOT EXISTS tasks (id BIGSERIAL PRIMARY KEY, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL)')
+            yield PostgresDatabase(connection)
+        return
+    if os.environ.get('VERCEL'):
+        raise HTTPException(503, 'Connect a hosted database and configure DATABASE_URL in Vercel.')
     connection = sqlite3.connect(DB)
     try:
         connection.row_factory = sqlite3.Row
         with connection:
+            connection.execute('BEGIN IMMEDIATE')
+            connection.execute('CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL)')
             yield connection
     finally:
         connection.close()
 
-with database() as db:
-    db.execute('CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL)')
-
 app = FastAPI(title='Everyday Tasks')
+
+@app.get('/api/config')
+def configuration():
+    return {'shared': bool(DATABASE_URL or os.environ.get('VERCEL'))}
 
 class TaskInput(BaseModel):
     title: str = Field(min_length=1, max_length=300)
@@ -52,14 +78,13 @@ def list_tasks():
 def add_task(data: TaskInput):
     title = clean_title(data.title)
     with database() as db:
-        position = db.execute('SELECT COALESCE(MAX(position), -1) + 1 FROM tasks').fetchone()[0]
-        cursor = db.execute('INSERT INTO tasks(title, position) VALUES (?, ?)', (title, position))
-        return task(db.execute('SELECT * FROM tasks WHERE id=?', (cursor.lastrowid,)).fetchone())
+        position = db.execute('SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM tasks').fetchone()['next_position']
+        return task(db.execute('INSERT INTO tasks(title, position) VALUES (?, ?) RETURNING *', (title, position)).fetchone())
 
 @app.put('/api/tasks/order')
 def reorder(data: OrderInput):
     with database() as db:
-        existing = {row[0] for row in db.execute('SELECT id FROM tasks')}
+        existing = {row['id'] for row in db.execute('SELECT id FROM tasks')}
         if len(data.ids) != len(existing) or set(data.ids) != existing:
             raise HTTPException(409, 'The task list changed. Refresh and try again.')
         db.executemany('UPDATE tasks SET position=? WHERE id=?', [(index, id) for index, id in enumerate(data.ids)])
@@ -73,7 +98,7 @@ def update_task(id: int, data: TaskUpdate):
         if data.title is not None:
             db.execute('UPDATE tasks SET title=? WHERE id=?', (clean_title(data.title), id))
         if data.completed is not None:
-            db.execute('UPDATE tasks SET completed=? WHERE id=?', (data.completed, id))
+            db.execute('UPDATE tasks SET completed=? WHERE id=?', (int(data.completed), id))
         return task(db.execute('SELECT * FROM tasks WHERE id=?', (id,)).fetchone())
 
 @app.delete('/api/tasks/{id}', status_code=204)

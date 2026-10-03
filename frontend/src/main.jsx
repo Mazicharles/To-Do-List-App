@@ -8,6 +8,14 @@ function App() {
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null), [draft, setDraft] = useState('');
   const [dragging, setDragging] = useState(null);
+  const [shared, setShared] = useState(false);
+  useEffect(() => {
+    fetch('/api/config').then(r => r.json()).then(c => setShared(c.shared)).catch(() => {});
+    const timer = setInterval(() => {
+      if (!busy && editing === null) refresh().catch(() => {});
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [busy, editing]);
   async function api(path = '', method = 'GET', body) {
     const response = await fetch('/api/tasks' + path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not save your task. Please try again.'); }
@@ -31,7 +39,8 @@ function App() {
   const completed = tasks.filter(t => t.completed).length;
   const visible = tasks.filter(t => filter === 'All' || (filter === 'Done' ? t.completed : !t.completed));
   return <main>
-    <header><a className="brand" href="/">▦ <span>everyday</span><span className="brand-dot">.</span></a><span className="local">● Saved on this computer</span></header>
+    <header><a className="brand" href="/">▦ <span>everyday</span><span className="brand-dot">.</span></a><span className="local">● {shared ? 'Shared demo · saved online' : 'Saved on this computer'}</span></header>
+    {shared && <p className="demo-notice">This is a shared demo. Everyone can view and change these tasks. Try it with sample tasks.</p>}
     <section className="intro"><span className="eyebrow">A LITTLE FOCUS GOES A LONG WAY</span><h1>Make room for<br/><em>what matters.</em></h1><p>A simple place for your plans, big and small.<br/>One task at a time.</p></section>
     <section className="board" aria-label="Task list">
       <div className="board-heading"><div><h2>My tasks <span>{tasks.length}</span></h2><p>{tasks.length ? `${tasks.length - completed} left to do. You’ve got this.` : 'A fresh start. What’s on your mind?'}</p></div><span className="sun">✳</span></div>

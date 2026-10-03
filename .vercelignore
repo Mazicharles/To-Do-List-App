@@ -1,0 +1,8 @@
+.venv
+frontend/node_modules
+frontend/.npm-cache
+backend/*.db
+backend/*.db-*
+*.log
+.env*
+backend/test_api.py
